@@ -5,10 +5,14 @@ Demonstrates how to use the ThreEvo framework to solve a simple problem.
 """
 
 import os
+from dotenv import load_dotenv
 from agents import CoderAgent, TesterAgent, ReasoningAgent
 from execution import CodeExecutor
 from coordinator import ThreEvoCoordinator
 from config import Settings
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 def main():
@@ -85,7 +89,7 @@ Example:
     print("="*60)
     print(f"Converged: {result['converged']}")
     print(f"Iterations: {result['iterations']}")
-    print(f"\nFinal Code:")
+    print("\nFinal Code:")
     print("-" * 60)
     print(result['final_code'])
     print("-" * 60)
