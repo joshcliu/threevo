@@ -96,15 +96,12 @@ WHILE not converged AND iterations < MAX_ITERATIONS:
 ### Core Technologies
 - **Python**: Primary implementation language
 - **LangChain**: Multi-agent orchestration and coordination
-- **Docker**: Sandboxed code execution (2GB RAM, 10s timeout)
-- **Redis**: Inter-agent message passing
-- **PostgreSQL**: Store execution histories, evaluation results, and experiment data
 - **LangSmith**: Detailed logging and trace analysis
 
 ### Infrastructure Requirements
-- 8×A100 GPUs (80GB each) for experiments
-- 16-core CPUs for orchestration
-- Isolated execution environments to prevent cross-contamination
+- GPU access for LLM API calls (or API keys for Claude, GPT, etc.)
+- Standard development machine for orchestration
+- Basic execution environment with timeouts and resource monitoring
 
 ---
 
@@ -117,30 +114,18 @@ threevo/
 │   ├── base_agent.py          # Abstract base class for all agents
 │   ├── coder_agent.py         # Coder Agent implementation
 │   ├── tester_agent.py        # Tester Agent implementation
-│   └── reasoning_agent.py     # Reasoning Agent implementation
-│
-├── orchestration/
-│   ├── __init__.py
-│   ├── coordinator.py         # Main evolutionary loop coordinator
-│   ├── message_bus.py         # Redis-based messaging
-│   └── state_manager.py       # Track iteration state and history
+│   ├── reasoning_agent.py     # Reasoning Agent implementation
+│   └── orchestration.py       # Three-way validation, feedback generation, and prompt evolution
 │
 ├── execution/
 │   ├── __init__.py
-│   ├── sandbox.py             # Docker-based code execution
-│   ├── executor.py            # Test execution logic
+│   ├── executor.py            # Test execution logic with timeouts
 │   └── safety.py              # Resource limits and security
 │
-├── feedback/
+├── coordinator/
 │   ├── __init__.py
-│   ├── validator.py           # Three-way validation logic
-│   ├── feedback_generator.py # Generate semantic feedback
-│   └── diagnosis.py           # Error diagnosis from validation results
-│
-├── evolution/
-│   ├── __init__.py
-│   ├── prompt_evolution.py    # Prompt update mechanisms
-│   └── history_manager.py     # Track failures and learnings
+│   ├── coordinator.py         # Main evolutionary loop coordinator
+│   └── state_manager.py       # Track iteration state and history
 │
 ├── evaluation/
 │   ├── __init__.py
@@ -150,11 +135,6 @@ threevo/
 │   │   └── pythonsaga.py
 │   ├── metrics.py             # Pass@k, convergence, semantic correctness
 │   └── baselines.py           # Baseline model comparisons
-│
-├── storage/
-│   ├── __init__.py
-│   ├── database.py            # PostgreSQL interface
-│   └── cache.py               # Redis cache for prompts
 │
 ├── config/
 │   ├── __init__.py
@@ -176,10 +156,6 @@ threevo/
 │   ├── unit/
 │   ├── integration/
 │   └── end_to_end/
-│
-├── docker/
-│   ├── Dockerfile.executor    # Sandboxed execution environment
-│   └── docker-compose.yml     # Multi-container setup
 │
 ├── requirements.txt
 ├── setup.py
@@ -309,139 +285,159 @@ class TesterAgent(BaseAgent):
 
 ```python
 class ReasoningAgent(BaseAgent):
-    """Independently validates code and tests through reasoning"""
-    
-    def validate(
-        self, 
-        problem: str,
-        test_input: Any,
-        expected_output: Any,
-        actual_output: Any,
-        code: str
-    ) -> Tuple[bool, str]:
-        """
-        Perform three-way validation
-        
-        Returns:
-            (is_correct, feedback_text)
-        """
-        # Step 1: Independently solve the test case
-        reasoned_solution = self._solve_test_case(problem, test_input)
-        
-        # Step 2: Three-way comparison
-        diagnosis = self._diagnose(
-            expected_output, 
-            actual_output, 
-            reasoned_solution
-        )
-        
-        # Step 3: Generate rich semantic feedback
-        feedback = self._generate_feedback(
-            diagnosis,
-            problem,
-            test_input,
-            expected_output,
-            actual_output,
-            reasoned_solution,
-            code
-        )
-        
-        is_correct = diagnosis['type'] == 'correct'
-        return is_correct, feedback
-    
-    def _solve_test_case(self, problem: str, test_input: Any) -> Any:
+    """Independently solves problems through reasoning"""
+
+    def solve(self, problem: str, test_input: Any) -> Any:
         """
         Independently solve the test case through reasoning
-        
+
         Uses chain-of-thought prompting to work through the problem
+
+        Returns:
+            The reasoned solution output
         """
         prompt = f"""
         Problem: {problem}
         Input: {test_input}
-        
+
         Think step-by-step to solve this problem:
         1. What is the problem asking for?
         2. What is the correct approach?
         3. What should the output be?
-        
+
         Solution:
         """
         return self._call_llm(prompt)
-    
-    def _diagnose(
-        self, 
-        expected: Any, 
-        actual: Any, 
+```
+
+### 5. Orchestration Logic (agents/orchestration.py)
+
+```python
+from typing import Any, Tuple, List, Dict
+
+class ThreEvoOrchestration:
+    """Handles three-way validation, feedback generation, and prompt evolution"""
+
+    def validate_three_way(
+        self,
+        expected: Any,
+        actual: Any,
         reasoned: Any
-    ) -> dict:
+    ) -> Dict[str, Any]:
         """
         Perform three-way validation logic
-        
-        Returns diagnostic information about error type
+
+        Returns diagnostic information about error type and target
         """
         matches = {
             'expected_actual': self._compare(expected, actual),
             'expected_reasoned': self._compare(expected, reasoned),
             'actual_reasoned': self._compare(actual, reasoned)
         }
-        
+
         if all(matches.values()):
             return {'type': 'correct', 'target': None}
         elif matches['expected_reasoned'] and matches['actual_reasoned']:
             return {'type': 'test_error', 'target': 'tester'}
-        elif matches['expected_actual']:
+        elif matches['expected_actual'] and not matches['actual_reasoned']:
             return {'type': 'reasoning_conflict', 'target': 'review'}
         else:
-            # Could be code error, test error, or both
             return self._detailed_diagnosis(expected, actual, reasoned)
-    
-    def _generate_feedback(
+
+    def generate_feedback(
         self,
-        diagnosis: dict,
+        diagnosis: Dict[str, Any],
         problem: str,
         test_input: Any,
         expected: Any,
         actual: Any,
         reasoned: Any,
         code: str
+    ) -> Dict[str, str]:
+        """
+        Generate rich semantic feedback for both agents
+
+        Returns:
+            dict with 'coder_feedback' and 'tester_feedback' keys
+        """
+        feedback = {'coder_feedback': [], 'tester_feedback': []}
+
+        if diagnosis['type'] == 'correct':
+            return feedback
+
+        elif diagnosis['type'] == 'code_error':
+            feedback['coder_feedback'].append(
+                self._explain_code_error(problem, test_input, expected, actual, reasoned, code)
+            )
+
+        elif diagnosis['type'] == 'test_error':
+            feedback['tester_feedback'].append(
+                self._explain_test_error(problem, test_input, expected, reasoned)
+            )
+
+        elif diagnosis['type'] == 'both_errors':
+            coder_fb, tester_fb = self._explain_both_errors(
+                problem, test_input, expected, actual, reasoned, code
+            )
+            feedback['coder_feedback'].append(coder_fb)
+            feedback['tester_feedback'].append(tester_fb)
+
+        return feedback
+
+    def evolve_prompt(
+        self,
+        current_prompt: str,
+        feedback_history: List[str],
+        agent_type: str
     ) -> str:
         """
-        Generate rich natural language feedback
-        
-        Explains:
-        - What went wrong
-        - Why it's wrong
-        - How to fix it
-        - Step-by-step correct logic
+        Evolve agent prompt based on accumulated feedback
+
+        Args:
+            current_prompt: Current prompt string
+            feedback_history: List of feedback from recent iterations
+            agent_type: 'coder' or 'tester'
+
+        Returns:
+            Updated prompt string
         """
-        if diagnosis['type'] == 'correct':
-            return "All outputs match. Solution is correct."
-        
-        elif diagnosis['type'] == 'code_error':
-            return self._explain_code_error(
-                problem, test_input, expected, actual, reasoned, code
-            )
-        
-        elif diagnosis['type'] == 'test_error':
-            return self._explain_test_error(
-                problem, test_input, expected, reasoned
-            )
-        
-        elif diagnosis['type'] == 'both_errors':
-            return self._explain_both_errors(
-                problem, test_input, expected, actual, reasoned, code
-            )
-        
-        else:
-            return "Conflict detected. Manual review needed."
+        # Extract patterns from failures
+        # Identify common mistakes
+        # Generate improved instructions
+        # Add edge case handling guidance
+        pass
+
+    def _compare(self, a: Any, b: Any) -> bool:
+        """Compare two outputs for equality"""
+        return a == b
+
+    def _detailed_diagnosis(self, expected: Any, actual: Any, reasoned: Any) -> Dict[str, Any]:
+        """Perform detailed diagnosis when simple matching fails"""
+        # Could be code error, test error, or both
+        # Use heuristics or additional LLM call to determine
+        pass
+
+    def _explain_code_error(self, problem, test_input, expected, actual, reasoned, code) -> str:
+        """Generate explanation for code errors"""
+        pass
+
+    def _explain_test_error(self, problem, test_input, expected, reasoned) -> str:
+        """Generate explanation for test specification errors"""
+        pass
+
+    def _explain_both_errors(self, problem, test_input, expected, actual, reasoned, code) -> Tuple[str, str]:
+        """Generate explanations when both code and test have errors"""
+        pass
 ```
 
-### 5. Coordinator (orchestration/coordinator.py)
+### 6. Coordinator (coordinator/coordinator.py)
 
 ```python
+from agents.orchestration import ThreEvoOrchestration
+
 class ThreEvoCoordinator:
     """Main evolutionary loop coordinator"""
-    
+
     def __init__(
         self,
         coder_agent: CoderAgent,
@@ -455,7 +451,7 @@ class ThreEvoCoordinator:
         self.reasoner = reasoning_agent
         self.executor = executor
         self.max_iterations = max_iterations
-        self.message_bus = MessageBus()
+        self.orchestration = ThreEvoOrchestration()
     
     def solve(self, problem: str) -> dict:
         """
@@ -490,34 +486,56 @@ class ThreEvoCoordinator:
             coder_feedback = []
             tester_feedback = []
             all_correct = True
-            
+
             for result in execution_results:
-                is_correct, feedback = self.reasoner.validate(
-                    problem=problem,
-                    test_input=result['input'],
-                    expected_output=result['expected'],
-                    actual_output=result['actual'],
-                    code=code
+                # Reasoning agent independently solves the test case
+                reasoned_solution = self.reasoner.solve(problem, result['input'])
+
+                # Three-way validation
+                diagnosis = self.orchestration.validate_three_way(
+                    expected=result['expected'],
+                    actual=result['actual'],
+                    reasoned=reasoned_solution
                 )
-                
-                if not is_correct:
+
+                if diagnosis['type'] != 'correct':
                     all_correct = False
-                    # Route feedback to appropriate agent
-                    if 'code error' in feedback.lower():
-                        coder_feedback.append(feedback)
-                    if 'test error' in feedback.lower():
-                        tester_feedback.append(feedback)
+
+                    # Generate semantic feedback
+                    feedback = self.orchestration.generate_feedback(
+                        diagnosis=diagnosis,
+                        problem=problem,
+                        test_input=result['input'],
+                        expected=result['expected'],
+                        actual=result['actual'],
+                        reasoned=reasoned_solution,
+                        code=code
+                    )
+
+                    coder_feedback.extend(feedback['coder_feedback'])
+                    tester_feedback.extend(feedback['tester_feedback'])
             
             # Step 4: Check convergence
             if all_correct:
                 converged = True
                 break
             
-            # Step 5: Evolve prompts
+            # Step 5: Evolve prompts using orchestration
             if coder_feedback:
-                self.coder.evolve_prompt(coder_feedback)
+                new_prompt = self.orchestration.evolve_prompt(
+                    current_prompt=self.coder.prompt,
+                    feedback_history=coder_feedback,
+                    agent_type='coder'
+                )
+                self.coder.prompt = new_prompt
+
             if tester_feedback:
-                self.tester.evolve_prompt(tester_feedback)
+                new_prompt = self.orchestration.evolve_prompt(
+                    current_prompt=self.tester.prompt,
+                    feedback_history=tester_feedback,
+                    agent_type='tester'
+                )
+                self.tester.prompt = new_prompt
             
             iteration += 1
         
@@ -529,63 +547,70 @@ class ThreEvoCoordinator:
         }
 ```
 
-### 6. Sandboxed Executor (execution/sandbox.py)
+### 7. Code Executor (execution/executor.py)
 
 ```python
-class DockerExecutor:
-    """Execute code in isolated Docker containers"""
-    
-    def __init__(
-        self, 
-        memory_limit: str = "2g",
-        timeout: int = 10
-    ):
-        self.memory_limit = memory_limit
+import subprocess
+import tempfile
+import json
+import os
+import sys
+from typing import Any
+
+class CodeExecutor:
+    """Execute code with timeout and resource limits"""
+
+    def __init__(self, timeout: int = 10):
         self.timeout = timeout
-        self.client = docker.from_env()
-    
+
     def execute(self, code: str, test_input: Any) -> Any:
         """
-        Execute code with test input in sandboxed environment
-        
+        Execute code with test input
+
         Returns:
             Output from code execution or error message
         """
-        # Create temporary directory with code
         with tempfile.TemporaryDirectory() as tmpdir:
             code_path = os.path.join(tmpdir, "solution.py")
-            input_path = os.path.join(tmpdir, "input.json")
-            output_path = os.path.join(tmpdir, "output.json")
-            
-            # Write code and input
+
+            # Write code that includes the test input execution
+            full_code = f"""
+import json
+import sys
+
+{code}
+
+# Execute with test input
+test_input = {repr(test_input)}
+try:
+    result = solution(test_input)  # Assuming function is named 'solution'
+    print(json.dumps({{'result': result}}))
+except Exception as e:
+    print(json.dumps({{'error': str(e)}}))
+"""
+
             with open(code_path, 'w') as f:
-                f.write(code)
-            with open(input_path, 'w') as f:
-                json.dump(test_input, f)
-            
-            # Run in Docker container
+                f.write(full_code)
+
+            # Execute with timeout
             try:
-                container = self.client.containers.run(
-                    image="python:3.11-slim",
-                    command=f"python solution.py",
-                    volumes={tmpdir: {'bind': '/workspace', 'mode': 'rw'}},
-                    working_dir='/workspace',
-                    mem_limit=self.memory_limit,
-                    network_disabled=True,
-                    detach=True
+                result = subprocess.run(
+                    [sys.executable, code_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=self.timeout,
+                    cwd=tmpdir
                 )
-                
-                # Wait with timeout
-                result = container.wait(timeout=self.timeout)
-                logs = container.logs().decode('utf-8')
-                
-                # Read output
-                with open(output_path, 'r') as f:
-                    output = json.load(f)
-                
-                container.remove()
-                return output
-                
+
+                # Parse output
+                if result.returncode == 0:
+                    output = json.loads(result.stdout.strip())
+                    return output.get('result') if 'result' in output else output
+                else:
+                    return {'error': result.stderr}
+
+            except subprocess.TimeoutExpired:
+                return {'error': 'Execution timeout'}
             except Exception as e:
                 return {'error': str(e)}
 ```
@@ -695,7 +720,6 @@ agents:
     initial_prompt: "You are a reasoning expert..."
 
 execution:
-  memory_limit: "2g"
   timeout_seconds: 10
   parallel_executions: 4
 
@@ -705,14 +729,9 @@ evolution:
   learning_rate: 0.1
 
 storage:
-  database:
-    host: "localhost"
-    port: 5432
-    database: "threevo"
-  
-  redis:
-    host: "localhost"
-    port: 6379
+  results_dir: "results/"
+  save_intermediate: true
+  checkpoint_frequency: 5  # Save every N iterations
 
 logging:
   langsmith_project: "threevo-experiments"
@@ -729,37 +748,39 @@ logging:
 - [ ] Implement BaseAgent abstract class
 - [ ] Implement CoderAgent with basic generation
 - [ ] Implement TesterAgent with basic test generation
-- [ ] Implement ReasoningAgent with three-way validation logic
+- [ ] Implement ReasoningAgent with independent problem solving
 - [ ] Set up LangChain integration for LLM calls
 
 **Days 3-4: Execution Environment**
-- [ ] Implement DockerExecutor for sandboxed code execution
-- [ ] Set up resource limits and security
+- [ ] Implement CodeExecutor with subprocess and timeouts
+- [ ] Set up timeout handling and error catching
 - [ ] Test basic code execution pipeline
-- [ ] Handle execution errors and timeouts
+- [ ] Handle execution errors and timeouts gracefully
 
 **Days 5-7: Orchestration**
 - [ ] Implement ThreEvoCoordinator with main evolutionary loop
-- [ ] Set up Redis message bus for inter-agent communication
-- [ ] Implement state management and checkpointing
+- [ ] Implement state management and checkpointing to files
 - [ ] Test end-to-end flow with simple examples
+- [ ] Add result persistence to JSON/file storage
 
-### Week 2: Feedback and Evolution
-**Days 8-9: Semantic Feedback**
-- [ ] Implement feedback generation in ReasoningAgent
-- [ ] Create feedback routing logic
+### Week 2: Orchestration and Evolution
+**Days 8-9: Orchestration Logic**
+- [ ] Implement ThreEvoOrchestration class in agents/orchestration.py
+- [ ] Implement three-way validation logic (validate_three_way)
+- [ ] Implement feedback generation (generate_feedback)
 - [ ] Design feedback format and structure
-- [ ] Test feedback quality on examples
+- [ ] Test validation and feedback on examples
 
 **Days 10-11: Prompt Evolution**
-- [ ] Implement prompt evolution mechanism
+- [ ] Implement prompt evolution mechanism (evolve_prompt)
 - [ ] Create failure pattern extraction
 - [ ] Build prompt update strategies
+- [ ] Integrate orchestration with coordinator
 - [ ] Test evolution over multiple iterations
 
 **Days 12-14: Storage and Logging**
-- [ ] Set up PostgreSQL schema for results
-- [ ] Implement database interface
+- [ ] Implement file-based storage for results (JSON/pickle)
+- [ ] Create result serialization and deserialization
 - [ ] Integrate LangSmith logging
 - [ ] Create debugging and visualization tools
 
@@ -836,11 +857,11 @@ Solution converges when:
 3. OR maximum iterations reached
 
 ### 5. Safety and Security
-- Network disabled in Docker containers
-- File system access restricted
-- Memory and CPU limits enforced
-- Timeout on all executions
-- Code sanitization and validation
+- Timeout on all executions (default 10s)
+- Code execution in isolated temporary directories
+- Limited to Python standard library unless specified
+- No network access (not enforced by default - use caution with untrusted code)
+- Basic error catching and resource monitoring
 
 ---
 
@@ -901,7 +922,7 @@ Solution converges when:
 
 ### 3. Execution Failures
 **Problem**: Code crashes or times out
-**Solution**: Provide execution error as feedback, timeout handling, error recovery
+**Solution**: Capture stderr and exceptions, provide as feedback, graceful timeout handling with clear error messages
 
 ### 4. Inconsistent Reasoning
 **Problem**: Reasoning Agent gives conflicting feedback
@@ -944,7 +965,6 @@ The implementation is successful if:
 ```bash
 # Setup environment
 pip install -r requirements.txt
-docker build -t threevo-executor -f docker/Dockerfile.executor .
 
 # Run single experiment
 python experiments/run_experiment.py --config config/experiment_config.yaml
