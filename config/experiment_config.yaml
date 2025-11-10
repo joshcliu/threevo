@@ -1,0 +1,23 @@
+experiment:
+  name: "threevo_example"
+  max_iterations: 10
+
+agents:
+  coder:
+    model: "claude-sonnet-4-20250514"
+    temperature: 0.7
+
+  tester:
+    model: "claude-sonnet-4-20250514"
+    temperature: 0.7
+
+  reasoning:
+    model: "claude-sonnet-4-20250514"
+    temperature: 0.0  # Deterministic reasoning
+
+execution:
+  timeout_seconds: 10
+
+storage:
+  results_dir: "results/"
+  save_intermediate: true
