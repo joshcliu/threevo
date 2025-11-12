@@ -41,13 +41,26 @@ cp .env.example .env
 # Edit .env and add your ANTHROPIC_API_KEY
 ```
 
-### Running the Example
+### Running the Examples
 
+**Basic Example:**
 ```bash
 python example.py
 ```
 
-This will run ThreEvo on a simple problem (sum of integers) and demonstrate the evolutionary loop.
+This will run ThreEvo on a HumanEval-style problem and demonstrate the evolutionary loop.
+
+**PythonSaga Benchmark:**
+```bash
+# Show benchmark information
+python example_pythonsaga.py info
+
+# Run on a single problem (problem index 0)
+python example_pythonsaga.py single 0
+
+# Run on a batch of problems (start at 0, run 5 problems)
+python example_pythonsaga.py batch 0 5
+```
 
 ## Architecture
 
@@ -79,10 +92,14 @@ threevo/
 │   └── state_manager.py
 ├── execution/          # Code execution with timeouts
 │   └── executor.py
+├── evaluation/         # Benchmark loading and metrics
+│   └── benchmarks/
+│       └── pythonsaga.py
 ├── config/             # Configuration management
 │   ├── settings.py
 │   └── experiment_config.yaml
-├── example.py          # Example usage
+├── example.py          # Basic example
+├── example_pythonsaga.py  # PythonSaga benchmark example
 └── requirements.txt
 ```
 
@@ -140,6 +157,43 @@ agents:
 execution:
   timeout_seconds: 10
 ```
+
+## PythonSaga Benchmark
+
+ThreEvo includes built-in support for the **PythonSaga benchmark** - a high-quality dataset of 185 hand-crafted problems covering 38 programming concepts.
+
+### Why PythonSaga?
+
+- **Less Saturated**: Unlike HumanEval and MBPP which are heavily benchmarked, PythonSaga is newer and less saturated
+- **Balanced Difficulty**: 20% Easy, 40% Medium, 40% Hard problems
+- **Concept Diversity**: 38 programming concepts with 5 problems each
+- **Real-World Context**: Problems are phrased in human-friendly, contextualized language
+
+### Using PythonSaga
+
+```python
+from evaluation.benchmarks import PythonSagaBenchmark
+
+# Load the benchmark
+benchmark = PythonSagaBenchmark()
+benchmark.load()  # Automatically downloads from GitHub
+
+# Get a problem
+problem = benchmark.get_problem_by_index(0)
+formatted = benchmark.format_problem_for_threevo(problem)
+
+# Run ThreEvo on it
+result = coordinator.solve(formatted)
+
+# Save results
+benchmark.save_results([result], 'results.jsonl')
+```
+
+### Dataset Source
+
+- **Paper**: "PythonSaga: Redefining the Benchmark to Evaluate Code Generating LLMs" (EMNLP 2024)
+- **GitHub**: https://github.com/PythonSaga/ACL2024
+- **Authors**: Ankit Yadav, Himanshu Beniwal, Mayank Singh
 
 ## Documentation
 

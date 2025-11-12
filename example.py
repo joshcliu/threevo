@@ -18,19 +18,41 @@ load_dotenv()
 def main():
     """Run a simple example problem through ThreEvo"""
 
-    # Define a simple problem
+    # Define a real problem from HumanEval benchmark
+    # HumanEval/0: has_close_elements
     problem = """
-Write a function called 'solution' that takes a list of integers and returns their sum.
+Write a function called 'solution' that checks if in a given list of numbers,
+any two numbers are closer to each other than a given threshold.
 
-Example:
-- Input: [1, 2, 3]
-- Output: 6
+The function should take two parameters:
+1. numbers: A list of float numbers
+2. threshold: A float representing the minimum distance threshold
 
-- Input: []
-- Output: 0
+Return True if any two numbers in the list are closer than the threshold, False otherwise.
 
-- Input: [-1, 1, -2, 2]
-- Output: 0
+Examples:
+- Input: numbers=[1.0, 2.0, 3.0], threshold=0.5
+  Output: False
+  (All numbers are at least 1.0 apart, which is greater than 0.5)
+
+- Input: numbers=[1.0, 2.8, 3.0, 4.0, 5.0, 2.0], threshold=0.3
+  Output: True
+  (2.8 and 3.0 are 0.2 apart, which is less than 0.3)
+
+- Input: numbers=[1.0, 2.0, 3.9, 4.0, 5.0, 2.2], threshold=0.3
+  Output: True
+  (2.0 and 2.2 are 0.2 apart, also 3.9 and 4.0 are 0.1 apart)
+
+- Input: numbers=[], threshold=0.5
+  Output: False
+  (Empty list has no pairs)
+
+- Input: numbers=[1.0], threshold=0.5
+  Output: False
+  (Single element has no pairs)
+
+Note: The function should be named 'solution' and take a tuple/list containing
+both parameters: solution((numbers, threshold))
 """
 
     # Get API key from environment
@@ -89,11 +111,51 @@ Example:
     print("="*60)
     print(f"Converged: {result['converged']}")
     print(f"Iterations: {result['iterations']}")
-    print("\nFinal Code:")
-    print("-" * 60)
+
+    print("\n" + "="*60)
+    print("FINAL CODE:")
+    print("="*60)
     print(result['final_code'])
-    print("-" * 60)
-    print(f"\nNumber of Tests: {len(result['final_tests'])}")
+    print("="*60)
+
+    print("\n" + "="*60)
+    print("GENERATED TEST CASES:")
+    print("="*60)
+    for i, (test_input, expected) in enumerate(result['final_tests'], 1):
+        print(f"Test {i}:")
+        print(f"  Input:    {test_input}")
+        print(f"  Expected: {expected}")
+    print("="*60)
+
+    # Show reasoning agent's validations from last iteration
+    if result['history']:
+        last_iteration = result['history'][-1]
+        print("\n" + "="*60)
+        print("REASONING AGENT VALIDATIONS (Last Iteration):")
+        print("="*60)
+
+        if 'validation_results' in last_iteration:
+            for i, validation in enumerate(last_iteration['validation_results'], 1):
+                print(f"\nTest {i}:")
+                print(f"  Input:         {validation['input']}")
+                print(f"  Expected:      {validation['expected']}")
+                print(f"  Actual:        {validation['actual']}")
+                print(f"  Reasoned:      {validation['reasoned']}")
+                print(f"  Diagnosis:     {validation['diagnosis']}")
+
+                # Show feedback if any
+                if validation.get('feedback'):
+                    coder_fb = validation['feedback'].get('coder_feedback', [])
+                    tester_fb = validation['feedback'].get('tester_feedback', [])
+
+                    if coder_fb:
+                        print(f"  Coder Feedback: {coder_fb[0][:100]}...")
+                    if tester_fb:
+                        print(f"  Tester Feedback: {tester_fb[0][:100]}...")
+
+        print("="*60)
+
+    print(f"\n✓ Solution {'converged' if result['converged'] else 'did not converge'} after {result['iterations']} iteration(s)")
     print("="*60)
 
 
