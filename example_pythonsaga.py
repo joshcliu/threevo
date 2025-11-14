@@ -125,11 +125,11 @@ def run_single_problem(problem_index: int = 0):
         if 'validation_results' in last_iteration:
             for i, validation in enumerate(last_iteration['validation_results'], 1):
                 print(f"\nTest {i}:")
-                print(f"  Input:         {validation['input']}")
-                print(f"  Expected:      {validation['expected']}")
-                print(f"  Actual:        {validation['actual']}")
-                print(f"  Reasoned:      {validation['reasoned']}")
-                print(f"  Diagnosis:     {validation['diagnosis']}")
+                print(f"  Input:         {validation.get('input', 'N/A')}")
+                print(f"  Expected:      {validation.get('expected', 'N/A')}")
+                print(f"  Actual:        {validation.get('actual', 'N/A')}")
+                print(f"  Reasoned:      {validation.get('reasoned', 'N/A')}")
+                print(f"  Diagnosis:     {validation.get('diagnosis', 'N/A')}")
 
         print("="*80)
 

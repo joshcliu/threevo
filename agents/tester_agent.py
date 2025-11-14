@@ -81,9 +81,11 @@ Generate a comprehensive test suite for this problem. Include:
 2. Edge cases (empty inputs, boundaries, special values)
 3. Corner cases (large inputs, negative numbers, etc.)
 
-Return the tests in JSON format as a list of objects, where each object has:
-- "input": the test input
-- "expected": the expected output
+IMPORTANT: Return the tests in VALID JSON format as a list of objects.
+- Each object must have "input" and "expected" fields
+- Use only valid JSON syntax (no Python expressions like [100] * 10)
+- Arrays must be fully written out: use [100, 100, 100] not [100] * 3
+- All values must be valid JSON types (numbers, strings, arrays, objects, booleans, null)
 
 Example format:
 [
@@ -132,8 +134,13 @@ Tests:
 
         except json.JSONDecodeError as e:
             print(f"Error parsing test suite: {e}")
-            print(f"Raw output: {test_suite_str}")
+            print(f"Raw output (first 500 chars): {test_suite_str[:500]}...")
+            print("Note: Make sure the output is valid JSON, not Python code!")
             # Return empty list if parsing fails
+            return []
+        except Exception as e:
+            print(f"Unexpected error parsing tests: {e}")
+            print(f"Raw output (first 500 chars): {test_suite_str[:500]}...")
             return []
 
     @staticmethod
@@ -153,5 +160,7 @@ Key guidelines:
 4. Think about what could break the code
 5. Ensure expected outputs are CORRECT according to the problem specification
 6. Generate diverse test cases that cover different scenarios
+7. ALWAYS output VALID JSON only (no Python expressions like [100] * 10)
+8. Write out arrays fully: use [100, 100, 100] instead of [100] * 3
 
 Focus on correctness of expected outputs and comprehensive coverage."""
