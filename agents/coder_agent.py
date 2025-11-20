@@ -60,6 +60,11 @@ class CoderAgent(BaseAgent):
             'prompt': self.prompt
         })
 
+        # Debug: print code at each iteration
+        print(f"\n=== CoderAgent Iteration {len(self.history)} ===")
+        print(code)
+        print("=" * 50)
+
         return code
 
     def _build_generation_prompt(self, problem: str) -> str:
