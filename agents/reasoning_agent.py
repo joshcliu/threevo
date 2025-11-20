@@ -4,7 +4,7 @@ Reasoning Agent
 Independently solves problems through chain-of-thought reasoning.
 """
 
-from typing import Any
+from typing import Any, List
 from .base_agent import BaseAgent
 
 
@@ -83,6 +83,42 @@ class ReasoningAgent(BaseAgent):
 
         return solution
 
+    def solve_batch(self, problem: str, test_inputs: List[Any]) -> List[Any]:
+        """
+        Solve multiple test cases in a single call.
+
+        More efficient than calling solve() multiple times since the problem
+        and code don't change within an iteration.
+
+        Args:
+            problem: Problem specification string
+            test_inputs: List of inputs for test cases
+
+        Returns:
+            List of reasoned solutions corresponding to each input
+        """
+        prompt = self._build_batch_reasoning_prompt(problem, test_inputs)
+        response = self._call_llm(prompt)
+
+        # Extract solutions for each test case
+        solutions = self._extract_batch_solutions(response, len(test_inputs))
+
+        # Save to history
+        self.history.append({
+            'problem': problem,
+            'test_inputs': test_inputs,
+            'reasoning': response,
+            'solutions': solutions
+        })
+
+        # Debug: print reasoning results
+        print(f"\n=== ReasoningAgent (Batch of {len(test_inputs)} tests) ===")
+        for inp, sol in zip(test_inputs, solutions):
+            print(f"  Input: {inp} -> Solution: {sol}")
+        print("=" * 50)
+
+        return solutions
+
     def _build_reasoning_prompt(self, problem: str, test_input: Any) -> str:
         """
         Build the reasoning prompt with chain-of-thought structure.
@@ -110,6 +146,39 @@ Think step-by-step to solve this problem:
 Provide your reasoning, then on a new line write "FINAL ANSWER:" followed by just the output value.
 
 Solution:
+""".strip()
+
+    def _build_batch_reasoning_prompt(self, problem: str, test_inputs: List[Any]) -> str:
+        """
+        Build reasoning prompt for multiple test cases at once.
+
+        Args:
+            problem: Problem specification string
+            test_inputs: List of test inputs
+
+        Returns:
+            Full batch reasoning prompt
+        """
+        inputs_str = "\n".join([f"  Test {i+1}: {inp}" for i, inp in enumerate(test_inputs)])
+
+        return f"""
+Problem: {problem}
+
+You need to solve this problem for multiple test inputs. For each test input, determine the correct output.
+
+Test Inputs:
+{inputs_str}
+
+For each test input, think through the solution and provide the answer.
+
+Format your response as:
+Test 1: [answer]
+Test 2: [answer]
+...
+
+Be precise and only output the answer value (number, list, string, etc.) for each test.
+
+Solutions:
 """.strip()
 
     def _extract_solution(self, response: str) -> Any:
@@ -158,6 +227,36 @@ Solution:
         except (ValueError, SyntaxError):
             # If it fails, return as string
             return answer_str
+
+    def _extract_batch_solutions(self, response: str, num_tests: int) -> List[Any]:
+        """
+        Extract solutions for multiple test cases from batch response.
+
+        Args:
+            response: Full reasoning response from LLM
+            num_tests: Number of test cases expected
+
+        Returns:
+            List of extracted solutions
+        """
+        solutions = []
+        lines = response.strip().split('\n')
+
+        # Look for "Test N: [answer]" pattern
+        for i in range(1, num_tests + 1):
+            pattern = f"Test {i}:"
+            for line in lines:
+                if pattern in line:
+                    # Extract answer after the pattern
+                    answer_str = line.split(pattern, 1)[1].strip()
+                    solution = self._parse_answer(answer_str)
+                    solutions.append(solution)
+                    break
+            else:
+                # If pattern not found, append None
+                solutions.append(None)
+
+        return solutions
 
     @staticmethod
     def _get_default_prompt() -> str:

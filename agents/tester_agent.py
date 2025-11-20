@@ -81,16 +81,20 @@ class TesterAgent(BaseAgent):
         return f"""
 {problem}
 
-Generate a comprehensive test suite for this problem. Include:
-1. Basic test cases
-2. Edge cases (empty inputs, boundaries, special values)
-3. Corner cases (large inputs, negative numbers, etc.)
+Generate EXACTLY 10 solid, high-quality test cases for this problem. Focus on quality over quantity.
 
-IMPORTANT: Return the tests in VALID JSON format as a list of objects.
+Your 10 test cases should include:
+1. 2-3 basic/normal cases covering typical usage
+2. 3-4 edge cases (empty inputs, boundaries, special values, single elements)
+3. 2-3 corner cases (large inputs, negative numbers, extreme values)
+4. 1-2 stress cases if applicable
+
+IMPORTANT: Return EXACTLY 10 tests in VALID JSON format as a list of objects.
 - Each object must have "input" and "expected" fields
 - Use only valid JSON syntax (no Python expressions like [100] * 10)
 - Arrays must be fully written out: use [100, 100, 100] not [100] * 3
 - All values must be valid JSON types (numbers, strings, arrays, objects, booleans, null)
+- Ensure expected outputs are CORRECT according to the problem specification
 
 Example format:
 [
@@ -156,16 +160,17 @@ Tests:
         Returns:
             Default system prompt string
         """
-        return """You are an expert test designer. Your task is to create comprehensive test suites that thoroughly validate code correctness.
+        return """You are an expert test designer. Your task is to create high-quality test suites that thoroughly validate code correctness.
 
 Key guidelines:
-1. Cover basic functionality with simple test cases
-2. Include edge cases (empty inputs, boundaries, None, zero, etc.)
-3. Include corner cases (large inputs, negative values, special characters)
-4. Think about what could break the code
-5. Ensure expected outputs are CORRECT according to the problem specification
-6. Generate diverse test cases that cover different scenarios
-7. ALWAYS output VALID JSON only (no Python expressions like [100] * 10)
-8. Write out arrays fully: use [100, 100, 100] instead of [100] * 3
+1. Generate EXACTLY 10 test cases - quality over quantity
+2. Cover basic functionality with 2-3 simple, representative test cases
+3. Include 3-4 critical edge cases (empty inputs, boundaries, None, zero, single elements)
+4. Include 2-3 corner cases (large inputs, negative values, special characters)
+5. Think strategically about what scenarios could break the code
+6. Ensure expected outputs are CORRECT according to the problem specification
+7. Make each test case count - avoid redundant or trivial tests
+8. ALWAYS output VALID JSON only (no Python expressions like [100] * 10)
+9. Write out arrays fully: use [100, 100, 100] instead of [100] * 3
 
-Focus on correctness of expected outputs and comprehensive coverage."""
+Focus on correctness of expected outputs and strategic, thorough coverage with exactly 10 well-chosen tests."""

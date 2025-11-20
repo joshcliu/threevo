@@ -91,15 +91,16 @@ class ThreEvoCoordinator:
                     'actual': actual_output
                 })
 
-            # Step 3: Reasoning validation
+            # Step 3: Reasoning validation (batch)
             print("Performing three-way validation...")
             coder_feedback = []
             tester_feedback = []
             all_correct = True
             validation_results = []
 
+            # Separate execution errors from valid results
+            valid_results = []
             for result in execution_results:
-                # Check if execution failed
                 if isinstance(result['actual'], dict) and 'error' in result['actual']:
                     all_correct = False
                     error_msg = result['actual']['error']
@@ -111,43 +112,48 @@ class ThreEvoCoordinator:
                         'diagnosis': 'execution_error',
                         'feedback': error_msg
                     })
-                    continue
+                else:
+                    valid_results.append(result)
 
-                # Reasoning agent independently solves the test case
-                reasoned_solution = self.reasoner.solve(problem, result['input'])
+            # Run reasoning once for all valid test inputs (batch)
+            if valid_results:
+                test_inputs = [result['input'] for result in valid_results]
+                reasoned_solutions = self.reasoner.solve_batch(problem, test_inputs)
 
-                # Three-way validation
-                diagnosis = self.orchestration.validate_three_way(
-                    expected=result['expected'],
-                    actual=result['actual'],
-                    reasoned=reasoned_solution
-                )
+                # Process validation results
+                for result, reasoned_solution in zip(valid_results, reasoned_solutions):
+                    # Three-way validation
+                    diagnosis = self.orchestration.validate_three_way(
+                        expected=result['expected'],
+                        actual=result['actual'],
+                        reasoned=reasoned_solution
+                    )
 
-                # Generate semantic feedback
-                feedback = self.orchestration.generate_feedback(
-                    diagnosis=diagnosis,
-                    problem=problem,
-                    test_input=result['input'],
-                    expected=result['expected'],
-                    actual=result['actual'],
-                    reasoned=reasoned_solution,
-                    code=code
-                )
+                    # Generate semantic feedback
+                    feedback = self.orchestration.generate_feedback(
+                        diagnosis=diagnosis,
+                        problem=problem,
+                        test_input=result['input'],
+                        expected=result['expected'],
+                        actual=result['actual'],
+                        reasoned=reasoned_solution,
+                        code=code
+                    )
 
-                if diagnosis['type'] != 'correct':
-                    all_correct = False
+                    if diagnosis['type'] != 'correct':
+                        all_correct = False
 
-                coder_feedback.extend(feedback['coder_feedback'])
-                tester_feedback.extend(feedback['tester_feedback'])
+                    coder_feedback.extend(feedback['coder_feedback'])
+                    tester_feedback.extend(feedback['tester_feedback'])
 
-                validation_results.append({
-                    'input': result['input'],
-                    'expected': result['expected'],
-                    'actual': result['actual'],
-                    'reasoned': reasoned_solution,
-                    'diagnosis': diagnosis['type'],
-                    'feedback': feedback
-                })
+                    validation_results.append({
+                        'input': result['input'],
+                        'expected': result['expected'],
+                        'actual': result['actual'],
+                        'reasoned': reasoned_solution,
+                        'diagnosis': diagnosis['type'],
+                        'feedback': feedback
+                    })
 
             # Step 4: Check convergence
             if all_correct:
