@@ -72,14 +72,9 @@ class CoderAgent(BaseAgent):
         Returns:
             Full prompt for code generation
         """
-        return f"""
-{problem}
+        return f"""{problem}
 
-Generate a Python function that solves this problem. Return only the code, properly formatted.
-The function should be named 'solution' and handle the input as specified.
-
-Code:
-""".strip()
+Write a Python function named 'solution'. Return only the code.""".strip()
 
     def _extract_code(self, response: str) -> str:
         """
@@ -113,14 +108,12 @@ Code:
         Returns:
             Default system prompt string
         """
-        return """You are an expert Python programmer. Your task is to write clean, correct, and efficient code.
+        return """Expert Python programmer. Write clean, correct, efficient code.
 
-Key guidelines:
-1. Write clear, readable code with proper variable names
-2. Handle edge cases carefully (empty inputs, negative numbers, etc.)
+Guidelines:
+1. Clear naming and readability
+2. Handle edge cases
 3. Follow Python best practices
-4. Ensure your code is bug-free and handles all specified requirements
-5. Think step-by-step about the problem before coding
-6. Test your logic mentally before finalizing the solution
+4. Think step-by-step
 
-Focus on correctness first, then efficiency."""
+Prioritize correctness over efficiency."""
