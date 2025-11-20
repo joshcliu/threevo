@@ -61,6 +61,11 @@ class TesterAgent(BaseAgent):
             'prompt': self.prompt
         })
 
+        # Debug: print tests at each iteration
+        print(f"\n=== TesterAgent Iteration {len(self.history)} ===")
+        print(f"Generated {len(parsed_tests)} tests: {parsed_tests}")
+        print("=" * 50)
+
         return parsed_tests
 
     def _build_generation_prompt(self, problem: str) -> str:

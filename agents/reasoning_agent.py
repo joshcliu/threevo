@@ -76,6 +76,11 @@ class ReasoningAgent(BaseAgent):
             'solution': solution
         })
 
+        # Debug: print reasoning result
+        print(f"\n=== ReasoningAgent (Test #{len(self.history)}) ===")
+        print(f"Input: {test_input} -> Solution: {solution}")
+        print("=" * 50)
+
         return solution
 
     def _build_reasoning_prompt(self, problem: str, test_input: Any) -> str:
